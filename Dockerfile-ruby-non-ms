@@ -1,43 +1,29 @@
-RUN . $HOME/.nvm/nvm.sh && nvm install $NODE_VERSION && nvm alias default $NODE_VERSION && nvm use default
-
-# Install the bundle with the gems
-
-WORKDIR /opt/app/rails-rennie
-
-RUN gem install bundler -v 2.1.2
-
-RUN MAKE="make --jobs 4" bundle install --path=/opt/app/rails-rennie/vendor/bundle
-
-# Stage 2: Running the app
+# Installing Ruby 2.7.3 using the official Ruby docker image.
 FROM ruby:2.7.0
 
-# Copy the app and its dependencies from the builder stage
-
-COPY --from=builder \
-    /usr/bin/git \
-    /usr/bin/node \
-    /usr/bin/yarn \
-    /usr/local/bin/bundler \
-    /usr/local/bundle \
-    /opt/app/rails-rennie/
-
-COPY --from=builder /opt/app/rails-rennie/vendor/bundle /opt/app/rails-rennie/vendor/bundle
-COPY --from=builder /opt/app/rails-rennie/app /opt/app/rails-rennie/app
-
-# COPY the application code into final image layer
+# Setting up Application Directory 
+ENV INSTALL_PATH /opt/app
 
 COPY ./ /opt/app/rails-rennie
-COPY ./Gemfile-docker /opt/app/rails-rennie/Gemfile
-COPY ./Gemfile-docker.lock /opt/app/rails-rennie/Gemfile.lock
+COPY ./Gemfile-docker ./opt/app/rails-rennie/Gemfile
 
-ENV BUNDLE_PATH=/opt/app/rails-rennie/vendor/bundle
+RUN mkdir -p $INSTALL_PATH
 
-# Install runtime dependencies
+# Setting up rails-rennie docker container files 
 
+COPY ./.env.docker /opt/app/rails-rennie/.env
+COPY ./config/geocoder.docker.rb /opt/app/rails-rennie/config/initializers/geocoder.rb
+COPY ./config/database.docker.yml /opt/app/rails-rennie/config/database.yml
+
+# Installing package depedancies for various different package dependacies required to run rails-rennie inside the docker container
+
+RUN apt-get install curl
 RUN apt-get update && \
     apt-get -y install sudo && \
-    apt-get -y install curl && \
-    apt-get -y install shared-mime-info postgresql-client && \
+    apt-get -y install git && \
+    apt-get -y install shared-mime-info && \
+    apt-get -y install postgresql-client && \
+    apt-get -y install vim && \
     curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash - && \
     curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.34.0/install.sh | bash && \
     apt-get -y install nodejs && \
@@ -45,15 +31,30 @@ RUN apt-get update && \
     echo "deb https://dl.yarnpkg.com/debian/ rc main" | sudo tee /etc/apt/sources.list.d/yarn.list && \
     apt-get update && apt-get -y install yarn
 
+ENV NVM_DIR=/root/.nvm
+ENV NODE_VERSION=v9.4.0
 
+RUN . $HOME/.nvm/nvm.sh && nvm install $NODE_VERSION && nvm alias default $NODE_VERSION && nvm use default
 
-# Set the default working directory for the application
+RUN echo 'alias docker-start-r2="/opt/app/rails-rennie/initialize-r2-docker.sh"' >> ~/.bashrc
+
+#Sets default working directory for the application
 
 WORKDIR /opt/app/rails-rennie
 
-# Expose the ports for the app
-EXPOSE 5432
-EXPOSE 3000
+# Install rails using bundler version 2.1.2 
+
+RUN gem install bundler -v 2.1.2
+
+# Install rails-rennie gem dependacies 
+RUN MAKE="make --jobs 4" bundle install --path=vendor/bundle
+#RUN bundle install --path=vendor/bundle
 
 # Run a shell
 CMD ["/bin/sh"]
+
+# Exposing the docker container ports in order for us to be able to visit it using localhost. 
+EXPOSE 5432
+EXPOSE 3000
+
+# ENTRYPOINT ["./entrypoints/docker-entrypoint.sh"]
