@@ -1,0 +1,59 @@
+RUN . $HOME/.nvm/nvm.sh && nvm install $NODE_VERSION && nvm alias default $NODE_VERSION && nvm use default
+
+# Install the bundle with the gems
+
+WORKDIR /opt/app/rails-rennie
+
+RUN gem install bundler -v 2.1.2
+
+RUN MAKE="make --jobs 4" bundle install --path=/opt/app/rails-rennie/vendor/bundle
+
+# Stage 2: Running the app
+FROM ruby:2.7.0
+
+# Copy the app and its dependencies from the builder stage
+
+COPY --from=builder \
+    /usr/bin/git \
+    /usr/bin/node \
+    /usr/bin/yarn \
+    /usr/local/bin/bundler \
+    /usr/local/bundle \
+    /opt/app/rails-rennie/
+
+COPY --from=builder /opt/app/rails-rennie/vendor/bundle /opt/app/rails-rennie/vendor/bundle
+COPY --from=builder /opt/app/rails-rennie/app /opt/app/rails-rennie/app
+
+# COPY the application code into final image layer
+
+COPY ./ /opt/app/rails-rennie
+COPY ./Gemfile-docker /opt/app/rails-rennie/Gemfile
+COPY ./Gemfile-docker.lock /opt/app/rails-rennie/Gemfile.lock
+
+ENV BUNDLE_PATH=/opt/app/rails-rennie/vendor/bundle
+
+# Install runtime dependencies
+
+RUN apt-get update && \
+    apt-get -y install sudo && \
+    apt-get -y install curl && \
+    apt-get -y install shared-mime-info postgresql-client && \
+    curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash - && \
+    curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.34.0/install.sh | bash && \
+    apt-get -y install nodejs && \
+    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add - && \
+    echo "deb https://dl.yarnpkg.com/debian/ rc main" | sudo tee /etc/apt/sources.list.d/yarn.list && \
+    apt-get update && apt-get -y install yarn
+
+
+
+# Set the default working directory for the application
+
+WORKDIR /opt/app/rails-rennie
+
+# Expose the ports for the app
+EXPOSE 5432
+EXPOSE 3000
+
+# Run a shell
+CMD ["/bin/sh"]
